@@ -4,6 +4,10 @@ from datetime import datetime
 
 app = Flask(__name__)
 
+@app.route("/")
+def home():
+    return jsonify({"status": "ok", "message": "AutoSEO Trends API is running"})
+
 @app.route("/trends")
 def trends():
     seed = request.args.get("seed")
