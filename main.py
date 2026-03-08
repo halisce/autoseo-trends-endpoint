@@ -60,15 +60,18 @@ def trends():
 # @app.route("/trends/multi")
 # def trends_multi():
 @app.route("/trends/multi")
-@app.route("/trends/multi")
 def trends_multi():
     keywords_param = request.args.get("keywords")
     if not keywords_param:
         return jsonify({"error": "Missing keywords parameter"}), 400
 
+    # Requested keywords
     requested = [k.strip() for k in keywords_param.split(",") if k.strip()]
 
+    # Load allowed industries from Google Sheet
     allowed = load_industries()
+
+    # Check for invalid keywords
     invalid = [k for k in requested if k not in allowed]
     if invalid:
         return jsonify({
@@ -77,6 +80,7 @@ def trends_multi():
             "allowed_keywords": allowed
         }), 400
 
+    # Fetch Google Trends data
     pytrends = TrendReq(hl='en-US', tz=360)
     pytrends.build_payload(requested, timeframe='now 7-d')
 
@@ -87,6 +91,7 @@ def trends_multi():
     week = datetime.utcnow().strftime("%Y-W%W")
     timestamp = datetime.utcnow().isoformat()
 
+    # Trend strength classifier
     def classify_strength(score: int) -> str:
         if score < 20:
             return "weak"
@@ -112,7 +117,7 @@ def trends_multi():
                 "timestamp": timestamp
             })
 
-    # Ranking nach aktuellem Score (absteigend)
+    # Ranking nach Score (höchster Trend zuerst)
     results_sorted = sorted(results, key=lambda x: x["score"], reverse=True)
 
     return jsonify({
