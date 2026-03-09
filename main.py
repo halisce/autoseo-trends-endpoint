@@ -70,20 +70,26 @@ def trends_multi():
     if not keywords_param:
         return jsonify({"error": "Missing keywords parameter"}), 400
 
+    # User gibt deutsche Branchen ein
     requested = [k.strip() for k in keywords_param.split(",") if k.strip()]
 
-    allowed = load_industries()
-    invalid = [k for k in requested if k not in allowed]
+    # Branchen + englische Keywords laden
+    industries = load_industries()
 
+    # Ungültige Branchen prüfen
+    invalid = [k for k in requested if k not in industries]
     if invalid:
         return jsonify({
-            "error": "Invalid keywords",
+            "error": "Invalid industries",
             "invalid": invalid,
-            "allowed_keywords": allowed
+            "allowed": list(industries.keys())
         }), 400
 
+    # Englische Keywords extrahieren
+    english_keywords = [industries[k] for k in requested]
+
     pytrends = TrendReq(hl="en-US", tz=360)
-    pytrends.build_payload(requested, timeframe="now 7-d")
+    pytrends.build_payload(english_keywords, timeframe="now 7-d")
 
     data = pytrends.interest_over_time()
 
@@ -101,15 +107,18 @@ def trends_multi():
     results = []
     errors = []
 
-    for kw in requested:
-        if kw not in data.columns:
-            errors.append({"keyword": kw, "error": "No trend data available"})
+    # Loop über deutsche Branchen, aber Trends über englische Keywords
+    for de_name in requested:
+        en_keyword = industries[de_name]
+
+        if en_keyword not in data.columns:
+            errors.append({"industry": de_name, "keyword": en_keyword, "error": "No trend data available"})
             continue
 
-        series = data[kw]
+        series = data[en_keyword]
 
         if series.empty:
-            errors.append({"keyword": kw, "error": "No trend data available"})
+            errors.append({"industry": de_name, "keyword": en_keyword, "error": "No trend data available"})
             continue
 
         current = int(series.iloc[-1])
@@ -117,7 +126,8 @@ def trends_multi():
         momentum = current - first
 
         results.append({
-            "keyword": kw,
+            "industry": de_name,
+            "keyword": en_keyword,
             "score": current,
             "momentum": momentum,
             "strength": classify_strength(current),
@@ -134,6 +144,60 @@ def trends_multi():
             "ranked_by": "score_desc",
             "count": len(results_sorted)
         }
+    })
+
+
+@app.route("/industries")
+def industries():
+    items = load_industries()
+    return jsonify({
+        "industries": list(items.keys()),
+        "count": len(items)
+    })
+
+@app.route("/trends/industry")
+def trends_industry():
+    name = request.args.get("name")
+    if not name:
+        return jsonify({"error": "Missing name parameter"}), 400
+
+    industries = load_industries()
+
+    if name not in industries:
+        return jsonify({
+            "error": "Invalid industry name",
+            "allowed": list(industries.keys())
+        }), 400
+
+    keyword = industries[name]
+
+    pytrends = TrendReq(hl="en-US", tz=360)
+    pytrends.build_payload([keyword], timeframe="now 7-d")
+
+    data = pytrends.interest_over_time()
+
+    if data.empty or keyword not in data.columns:
+        return jsonify({"error": "No trend data available"}), 404
+
+    score = int(data[keyword].iloc[-1])
+    first = int(data[keyword].iloc[0])
+    momentum = score - first
+
+    def classify_strength(score):
+        if score < 20:
+            return "weak"
+        elif score < 60:
+            return "medium"
+        else:
+            return "strong"
+
+    return jsonify({
+        "industry": name,
+        "keyword": keyword,
+        "score": score,
+        "momentum": momentum,
+        "strength": classify_strength(score),
+        "timestamp": datetime.utcnow().isoformat()
     })
 
 
