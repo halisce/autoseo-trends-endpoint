@@ -21,17 +21,18 @@ def load_industries():
         decoded = response.content.decode("utf-8").splitlines()
         reader = csv.DictReader(decoded)
 
-        industries = []
+        industries = {}
         for row in reader:
             if row.get("active", "").strip().lower() == "true":
-                industries.append(row["industry"].strip())
+                de = row["industry"].strip()
+                en = row["keyword"].strip()
+                industries[de] = en
 
         return industries
 
     except Exception as e:
         print("Error loading industries:", e)
-        return []
-
+        return {}
 
 # ---------------------------------------------------------
 # Single keyword route
